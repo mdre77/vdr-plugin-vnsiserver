@@ -233,7 +233,7 @@ void cLiveStreamer::Action(void)
         {
           m_refTime = pkt_data.reftime;
           m_refDTS = pkt_data.dts;
-          m_curDTS = (pkt_data.dts - m_refDTS) / DVD_TIME_BASE + m_refTime;
+          m_curDTS = (int64_t)m_refTime * DVD_TIME_BASE;
           if (m_protocolVersion >= 11)
           {
             sendStreamTimes();
@@ -243,7 +243,7 @@ void cLiveStreamer::Action(void)
             sendRefTime(pkt_data);
           pkt_data.reftime = 0;
         }
-        m_curDTS = (pkt_data.dts - m_refDTS) / DVD_TIME_BASE + m_refTime;
+        m_curDTS = (pkt_data.dts - m_refDTS) + (int64_t)m_refTime * DVD_TIME_BASE;
         if (bufferStatsTimer.TimedOut())
         {
           sendStreamTimes();
@@ -846,7 +846,6 @@ void cLiveStreamer::sendStreamTimes()
 
   time_t starttime = m_refTime;
   int64_t refDTS = m_refDTS;
-  time_t current = m_curDTS;
 
   {
 #if VDRVERSNUM >= 20301
@@ -861,22 +860,22 @@ void cLiveStreamer::sendStreamTimes()
 #endif
     if (!schedule)
       return;
-    const cEvent *event = schedule->GetEventAround(current);
+    const cEvent *event = schedule->GetEventAround(m_curDTS / DVD_TIME_BASE);
     if (event)
     {
       starttime = event->StartTime();
-      refDTS = (starttime - m_refTime) * DVD_TIME_BASE + m_refDTS;
+      refDTS = int64_t(difftime(starttime, m_refTime) * DVD_TIME_BASE) + m_refDTS;
     }
   }
   uint32_t start, end;
   bool timeshift;
-  int64_t mintime = current;
-  int64_t maxtime = current;
+  int64_t mintime = m_curDTS;
+  int64_t maxtime = m_curDTS;
   m_Demuxer.BufferStatus(timeshift, start, end);
   if (timeshift)
   {
-    mintime = (start - starttime) * DVD_TIME_BASE + refDTS;
-    maxtime = (end - starttime) * DVD_TIME_BASE + refDTS;
+    mintime = int64_t(difftime((time_t)start, starttime) * DVD_TIME_BASE) + refDTS;
+    maxtime = int64_t(difftime((time_t)end, starttime) * DVD_TIME_BASE) + refDTS;
   }
 
   resp.add_U8(timeshift);
